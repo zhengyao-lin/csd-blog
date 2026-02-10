@@ -109,12 +109,40 @@ However, what is usually done by verified compilers such as CompCert [?] is to s
 This is because \\(B\\), as a more concrete program (think assembly), usually requires more internal steps than \\(A\\), so it is easier to perform induction on the more abstract steps of \\(A\\), and then show that \\(B\\) has corresponding steps.
 Then, assuming a deterministic semantics (i.e., any state has at most one transition), we can show that forward simulation implies backward simulation.
 
-The last step of turning a forward simulation to a backward simulation is actually where the traditional strategy breaks down for dataflow compilation.
-Semantics of dataflow circuits (the target language) is concurrent and non-deterministic, while the semantics of the input language is sequential and deterministic.
+However, the last step of turning a forward simulation to a backward simulation is where the traditional strategy breaks down for dataflow compilation.
+Semantics of dataflow circuits (the target program \\(B\\)) is concurrent and non-deterministic, while the semantics of the input program \\(A\\) is sequential, imperative, and deterministic.
 As a result, it is easy for the compiler to incorrectly introduce more behaviors in \\(B\\) than \\(A\\) (e.g., data races and deadlocks), and it is much more difficult to show the absence of these buggy behaviors.
 
-In our formalization of a dataflow compiler in Lean, we adopt a novel proof strategy, where we first prove forward simulation in the traditional way (i.e., the behavior of \\(B\\) includes the behavior of the source program \\(A\\)), and then using a combination of typing and simulation, we show that the dataflow circuit \\(B\\) preserves the "deterministic" result of \\(A\\), and is free of data races and deadlocks.
+In our formalization of a dataflow compiler in Lean, we adopt a novel proof strategy, where we first prove forward simulation in the traditional way (i.e., the behavior of \\(B\\) includes the behavior of the source program \\(A\\)).
+In the second part, using a combination of typing and simulation, we show that the dataflow circuit \\(B\\) is *determinant*: it always produces the same result, even if intermediate states may be non-deterministic due to execution schedule or timing.
 
-# Proving determinacy
+By combining the forward simulation and the second determinancy results, we are then able to prove that the input sequential program \\(A\\) and output dataflow circuit \\(B\\) always produce the same results, and \\(B\\) is free of data races and deadlocks.
 
-# Conclusion
+## Proving determinacy
+
+Proving that the dataflow circuit \\(B\\) is determinant (that it produces the same result regardless of schedule) becomes tricky when different operators can access a shared memory and there could be data races.
+In our work, we rule out the possibility of data races entirely through the use of *affine permission tokens* [?].
+
+The idea is that, in the dataflow circuit \\(B\\), which consists of a large number of distributed operators communicating with each other through channels, whenver a memory load/store operator needs access to the memory, it needs to possess the suitable permission token for the memory region it tries to read/write.
+Then, when the operator is done with reading/writing, the token is passed through channels to other nodes, when in turn gives other operators access to the same region.
+Most importantly, these tokens are *affine*, in the sense that operators cannot duplicate or create new tokens.
+These tokens are also *ghost* tokens, because they only exist in the reasoning about the dataflow circuit, and the actual execution of \\(B\\) will treat them as control/synchronization signals at the hardware level.
+
+Our proof obligation then becomes proving that there exists a consistent way the produced circuit can distribute these affine permission tokens.
+In terms of proof engineering, the challenging part is to find a formulation of this property that allows it to propagate through various compiler passes and existing forward simulation proofs without any additional proof changes.
+We refer the reader to our full paper for details on how this is done [?].
+
+## Pipelining and Optimizations
+
+?
+
+# Evaluation against unverified dataflow compilers
+
+Formally verifying a compiler usually comes with a significant amount of human labor and cost in compilation quality (because optimizations are difficult to formally verify).
+Therefore, let's see how worse our verified dataflow compiler is compared to unverified ones.
+
+In this evaluation, we compare against two unverified compilers in two slightly pipelines:
+
+# Related work and conclusion
+
+- Internal determinism
