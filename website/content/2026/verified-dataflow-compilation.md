@@ -1,5 +1,5 @@
 +++
-title = "Formally Verified Dataflow Compilation"
+title = "Compiling Programs to Dataflow Circuits, Formally Verified™"
 date = 2026-01-29
 
 [taxonomies]
@@ -11,138 +11,169 @@ author = {name = "Zhengyao Lin", url = "https://zhengyao.page/" }
 committee = []
 +++
 
-<!-- Overview:
-1. Background and motivation
-   - What is dataflow architecture and compilation
-   - Why is dataflow compilation difficult
-2. Formally verifying dataflow compilation
-3. Determinacy
-4. Conlusion -->
+*Dataflow architectures* [?] are computer architectures designed to directly execute programs represented as *dataflow circuits*,
+which consist of a set of operators (instructions) with data dependencies between them, but without any implicit control flow
+(i.e., no "next" instruction, jumps, or basic blocks).
 
-<!-- Dataflow architectures, unlike traditional von Neumann architectures predominant in CPUs, execute programs represented as a *dataflow graph* without any explicit control-flow. -->
+The paradigm of dataflow has seen a re-emergence in reconfigurable dataflow architectures (RDAs) [?] and
+dynamically-scheduled high-level synthesis (HLS) [?].
+In RDAs, since the program is compiled to a dataflow circuit ahead of time, the architecture can be designed
+to reduce energy costs in data movement (e.g., moving data between registers/cache/memory and ALUs)
+and handling instructions (e.g., fetching and decoding).
+These improvements can sometimes lead to over 100x better energy efficiency compared to off-the-shelf low-power CPUs [?].
+In dynamically-scheduled HLS [?], by making operators in the dataflow circuit data-driven without following a
+static global schedule (i.e., asynchrony), we can achieve 6x speedup on certain irregular workloads compared to
+traditional statically-scheduled HLS.
 
-*Dataflow architectures* [cgra-survey] are computer architectures designed to directly execute programs represented as *dataflow circuits*, which consist of a set of operators (instructions) with data dependencies between them, but without any implicit control flow (i.e., no "next" instruction, jumps, or basic blocks).
+A key problem, however, is that while parallelism and dynamic scheduling benefit performance, they simultaneously
+create challenges for *correctness*.
+When programming RDAs or using dynamic HLS, the typical workflow is to compile a high-level sequential program
+(in C, for example) into an asynchronous dataflow circuit.
+Each instruction in the original sequential program is converted into a parallel operator in the dataflow circuit. 
+To enable realistic applications, these operators also access *shared memory*.
+As a result, even a simple sequential source program becomes a highly distributed system with both
+message passing and shared memory, along with potential deadlocks and data races.
 
-The lack of control flow has two main advantages: parallelism and data locality.
-In a dataflow circuit, *all* operators run in parallel, and they can execute as soon as their inputs are ready.
-This is like out-of-order execution in CPUs, but it is done statically on the whole program, so that the hardware does not need additional complexity to analyze dependencies.
-The explicit data dependencies in dataflow circuits also inform well-designed architectures to directly send data from the producer to the consumer without going through memories, which reduces data movement costs and can improve power consumption by 100x in some applications [riptide,tyr].
+In this blog post and our related PLDI paper [?], we tackle the problem of *formally verifying* dataflow compilation,
+which provably prevents any incorrect dataflow compilation and guarantees that the compiled dataflow circuit
+is correct and equivalent to the source program.
 
-For these reasons, modern dataflow architectures such as *coarse-grained reconfigurable arrays (CGRAs)* [cgra-survey] are receiving increasing attention from the architecture community in recent years, accelerating applications in machine learning [?], signal processing [?], and edge computing [?].
+## Examples and Challenges
 
-The benefits of dataflow circuits come with a catch, however, and that is the increased complexity of the compiler.
-To ensure programmability, a compiler targeting a dataflow architecture has to translate a sequential, usually imperative, program (e.g., in C) into an equivalent dataflow circuit.
-This means that the compiler needs to turn a sequential program into a concurrent one (where each instruction runs in its own parallel process!), and ensure that the output dataflow circuit (1) behaves the same way as the source program, and (2) does not have any concurrency issues like deadlocks and data races.
+Let us consider a simple example of dataflow compilation to get a sense of how it works and what the challenges are.
+The example source program is a single relaxation step in the [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
+The input is a graph represented as an edge list, where each edge `e = 1 .. E - 1` has source vertex `Src[e]`, destination vertex `Dst[e]`, and weight `W[e]`.
+The current distance to each vertex is stored in the array `Dist`,
+and the loop below iterates through all edges and updates the distance of a node
+if a shorter path is found.
+```
+for 0 <= e < E
+  u = Src[e]
+  v = Dst[e]
+  d = Dist[u] + W[e]
+  if d < Dist[v]
+    Dist[v] = d
+```
 
-To see these challenges more concretely, here are two examples.
+We first compile the loop body to the dataflow circuit below.
 
-Example 1: Data race introduced by the compiler.
+<img src="/2026/verified-dataflow-compilation/loop-body.svg" style="height: 20em" />
 
-Use a loop `for i do A[i] = B[i]` and consider cases when `A` and `B` could alias or not.
+This dataflow circuit is essentially a collection of memory and arithmetic operations
+in the loop body: we have the load operators (`LD`) for each array that takes an index
+to be loaded from, store operators (`ST`) that stores the input value to the input index,
+and arithmetic operators (`+` and `<`).
+The two steer operators (`T`) are used for encoding branching.
+It takes an input value and a branch condition (in this case computed by the comparison
+operator), forwards the value to the output if the condition is true, and otherwise
+discards the input.
+Besides the operators, the channels (edges) between them reflect the data-
+and control-dependencies in the source imperative program.
 
-Example 2: Deadlocks introduced by the compiler (maybe rewriter?).
+Semantically, these operators mentioned above are data-driven and parallel: they each
+act like a small recursive process that waits for inputs, does the operation, and
+pushes outputs to its output channels.
+The channels between them are queues with non-blocking send (except on full buffer)
+and blocking reads.
+As a result, operators without dependencies between them can potentially run in parallel,
+modulo hardware timing.
+For instance, the three loads for `Src`, `Dst`, `W` can be executed simultaneously,
+and then in the next step, the two loads for `Dist` and the addition `+` can also run in parallel.
 
-<!-- A dataflow graph is inherently parallel: any instruction or operator in a dataflow graph can execute whenever they have input data available.
-From the perspective of computer architects, dataflow graphs also have great data locality, because each instruction knows exactly which next instruction to send the output data to, without having to repeatedly write to/read from the memory. -->
-<!-- 
-By utilizing these features of dataflow graphs, decades of research on dataflow architectures[?] have shown that the right design can achieve orders-of-magnitube better energy-efficiency than von Neumann architectures that are predominant in CPUs, without sacrificing, or even improving, performance. -->
-<!-- 
-However, the Achilles' heel of dataflow architectures is programmability.
-Directly writing a *correct* dataflow graph is hard, for the same reasons that concurrent programming is difficult: without an explicit, synchronized control-flow, a dataflow graph can easily have deadlocks and data races.
-TODO: expand more -->
 
-<!-- That's why in this blog post, I'm going to go over my work on formally verifying dataflow compilation, yada yada. -->
+**Memory Ordering.**
+While such parallelism is great for performance, it also leads to
+correctness issues in memory ordering.
+To see this, we compile the loop header as well in the following extended circuit, where the
+additional part of the circuit annotated with `LH` (for loop header) will emit a sequence
+of edges `0 .. E - 1` to the loop body circuit.
 
-<!-- TODO:
-- Simple example(s)
-- The problems
-- How to verify -->
+(IMAGE)
 
-# Formally verifying (dataflow) compilation
+However, now we have an issue with memory ordering.
+The loads and store to `Dist` have various dependencies that are *originally* enforced by the
+sequential control-flow; e.g., loads in the next iteration may overlap with the store in
+the previous iteration with a read-after-write dependency.
+They are now lost due to the more parallel semantics of dataflow circuits, since it is possible
+that on certain execution schedules, the `LD` of `Dist` in the second iteration runs in parallel
+with the `ST` of `Dist` in the first iteration, resulting in a potential *data race*.
 
-While extensive testing can alleviate these issues in general, the parallel nature of dataflow circuits makes it difficult to discover concurrency bugs via simple testing.
-In our work, we turn to formal verification: we formalize and prove that a dataflow compiler is free of the aforementioned issues, using the Lean theorem prover [?].
+There are in general two solutions to the memory ordering issue.
+The first is to use a *load-store queue* [?], which is an additional hardware unit that
+dynamically commits memory operations in a safe order.
+Out-of-order execution in CPUs (which is also dataflow in a sense) sometimes uses load-store queues
+for correct memory ordering.
 
-At a very high level, compiler verification generally involves:
+However, we are focusing on a second pure-dataflow approach to avoid the additional hardware complexity,
+which is to add an additional data dependency as a back-edge from the `ST` to the `LD` of `Dist` to
+send a *memory synchronization* signal.
+This way, we can make sure that `LD`s of `Dist` will always wait for the `ST` in the previous iteration
+to finish, avoiding any data races.
 
-1. Formalizing the semantics of input, output, and any intermediate representations (IRs) used in the compiler. That is, we need to mathematically describe the meaning of programs in these languages.
-2. Prove that the compiler (which also has to be formalized) always produces an output program that is "equivalent" to the input program.
+(IMAGE)
 
-Let us get into more details of what these steps mean in our context.
-For (1), we use *(small-step) operational semantics* to describe programming language semantics in this blog post.
-Essentially, an operational semantics formalizes the meaning of a program as a labeled transition system (i.e., an automaton), where the potentially infinite state space represents program execution states (program counter, memory state, values bound to local variables, etc.), and transitions from a state represents possible "next steps" of execution.
-There are some tricky details about how to actually define this transition relation based on the syntax of the program, but for now, you can simply think of the meaning of a program as an (infinite) automaton.
+In tension with avoiding data races, the dataflow compiler still needs to extract as much parallelism
+as possible and avoid overly synchronizing the dataflow circuit, since otherwise it would lose the
+parallelism benefits of the hardware.
 
-<!-- Each transition is usually labelled by the action or effect done in that step. -->
+**Other Correctness Issues.**
+Besides data races, *deadlocks* could also happen in an asynchronous dataflow circuit.
+The channels between operators have a finite buffer size, and a sender has to wait if its output channel is full,
+blocking its own execution and potentially the execution of any upstream operators.
 
-<!-- So now you can think of the meaning of any program (input, output, or intermediate) involved in the compiler as a transition system. -->
+In general, a correct dataflow compiler must make sure that over *all possible execution schedules*, the parallel
+dataflow circuit behaves equivalently to the source program.
+Larger applications may scale to hundreds of operators, such as the following dataflow circuit for computing SHA-256
+compiled by the RipTide [?] dataflow compiler, and debugging an incorrect dataflow circuit with data races and
+deadlocks would be a nightmare.
 
-Now let's say that the compiler takes an input program \\(A\\) and translates it to an output program \\(B\\).
-Using the operational semantics, we can now define the meaning of these programs as labelled transition systems, denoted as \\(\llbracket A \rrbracket := (S, s_0, \to_s: S \times \Sigma \times S)\\) and \\(\llbracket B \rrbracket := (T, t_0, \to_t: T \times \Sigma \times T)\\), where \\(S\\) and \\(T\\) are the state spaces, \\(s_0\\) and \\(t_0\\) are the initial states, and \\(\to\\)'s are the labelled transition relations using labels in a common label set \\(\Sigma\\) (i.e., the alphabet in automata terms).
-The ultimate goal is to prove that \\(\llbracket A \rrbracket\\) and \\(\llbracket B \rrbracket\\) are "equivalent" automata, but what does that mean?
+(IMAGE)
 
-There are a number of definitions of such "equivalence" we can choose from.
-For example, one may be attempted to say that \\(\llbracket A \rrbracket\\) and \\(\llbracket B \rrbracket\\) are isomorphic as graphs (think of \\(S\\) as nodes and \\(\to\\) as edges).
-However, this is too strong and usually not true for compilers, for a few reasons.
-First, we want to allow optimizations such as dead code elimination.
-They change the behavior of the program, but not in a way that is observable by the end user.
-Second, we don't necessarily want \\(\llbracket B \rrbracket\\) to preserve *all* the behavior of \\(\llbracket A \rrbracket\\).
-Think of a C program with an undefined behavior: while the source program may either crash or print a unicorn, per the specification, the compiler may choose one of those behaviors in the output program.
+## Wavelet: A Formally Verified Dataflow Compiler
 
-Therefore, in our case, we use the notion of *simulation*:
-> **Definition (Backward Simulation).**
-> Given a binary relation \\(R : S \times T\\), we say that \\(R\\) is a *simulation* between \\(\llbracket A \rrbracket\\) and \\(\llbracket B \rrbracket\\) if:
-> - \\(R(s_0, t_0)\\), i.e., the initial states are related.
-> - For any state \\(s \in S, t \in T\\), if \\(R(s, t)\\) and \\(s \overset{l}{\to} s\'\\), then there exists some \\(t\'\\), such that \\(t \overset{l}{\to} t\'\\) and \\(R(s', t')\\).
+The goal of our research is to use *formal verification* to prove the absence of any dataflow issues mentioned in the
+previous section.
+We have recently built prototype dataflow compiler called Wavelet [?], with its core passes verified in the Lean theorem
+prover [?], guaranteeing that it always generates correct dataflow circuits.
+We briefly summarize our approach in this section with examples, and refer the reader to our full paper [?] for details.
 
-Intuitively, the second requirement says that for any pair of related states, if \\(B\\) makes a step, then \\(A\\) can make a corresponding step that result again in a pair of related states.
-In particular, if we can show that such simulation relation \\(R\\) exists, then there is a *trace refinement*: any trace of \\(\llbracket B \rrbracket\\) is a trace of \\(\llbracket A \rrbracket\\).
-In other words, any behavior of \\(\llbracket B \rrbracket\\) has a corresponding behavior in \\(\llbracket A \rrbracket\\).
+Wavelet consists of five compilation passes.
+Its input language is a simple imperative language called \\(\mathbb{L}_{let}\\),
+which is equipped with a capability type system and a construct called *fence* to
+soundly mark synchronization points.
 
-In reality, this definition is still slightly too strong, because, for example, \\(B\\) may have internal steps (e.g., setting up stacks) that do not correspond to any step in \\(A\\).
-We omit these cases in this blog post for simplicity.
+\\(\mathbb{L}_{let}\\) is currently embedded in Rust,
+and a lightly abridged example looks like this,
+where `f` maps each element of an array A from `i` to `n` through another function `g`,
+whose body is omitted.
+```Rust
+#[cap(A: uniq @ i..n)]
+fn f(i: u32, n: u32) {
+  if i < n {
+    let x = load_A(i);
+    let y = g(x);
+    fence!();
+    let () = store_A(i, y);
+    f(i + 1, n)
+  } else { () }
+}
 
-## How to prove simulation and challenges of dataflow compilation
+#[cap()]
+fn g(x: u32) -> u32 { ... }
+```
 
-The definition above is a *backward* simulation, because relative to the compiler which translates \\(A\\) to \\(B\\), we are proving that \\(B\\) is simulated by \\(A\\).
-However, what is usually done by verified compilers such as CompCert [?] is to show the other direction first: i.e., a *forward* simulation that \\(A\\) is simulated by \\(B\\).
-This is because \\(B\\), as a more concrete program (think assembly), usually requires more internal steps than \\(A\\), so it is easier to perform induction on the more abstract steps of \\(A\\), and then show that \\(B\\) has corresponding steps.
-Then, assuming a deterministic semantics (i.e., any state has at most one transition), we can show that forward simulation implies backward simulation.
+We only support tail recursion and branching as the two primitive control-flow
+constructs for a clearer correspondence to dataflow circuits, but most loops can be easily
+reduced to this form.
+Each function needs to be annotated with an initial *capability*, in this case
+`A: uniq @ i..n`, which means that the function requires the unique or write capability
+for the array `A` from indices `i` to `n`.
+In the body, the user needs to occasionally add an annotation of `fence!()`, which tells
+the type checker to reclaim any used capabilities for future memory operations.
+Here in the example, `load_A(i)` consumes the capability for `A[i]`.
+In order to type-check `store_A(i, y)`, which may conflict with `load_A(i)` if run in parallel,
+we have to add a `fence!()` for synchronization.
 
-However, the last step of turning a forward simulation to a backward simulation is where the traditional strategy breaks down for dataflow compilation.
-Semantics of dataflow circuits (the target program \\(B\\)) is concurrent and non-deterministic, while the semantics of the input program \\(A\\) is sequential, imperative, and deterministic.
-As a result, it is easy for the compiler to incorrectly introduce more behaviors in \\(B\\) than \\(A\\) (e.g., data races and deadlocks), and it is much more difficult to show the absence of these buggy behaviors.
+## Comparison with RipTide and LLVM CIRCT
 
-In our formalization of a dataflow compiler in Lean, we adopt a novel proof strategy, where we first prove forward simulation in the traditional way (i.e., the behavior of \\(B\\) includes the behavior of the source program \\(A\\)).
-In the second part, using a combination of typing and simulation, we show that the dataflow circuit \\(B\\) is *determinant*: it always produces the same result, even if intermediate states may be non-deterministic due to execution schedule or timing.
-
-By combining the forward simulation and the second determinancy results, we are then able to prove that the input sequential program \\(A\\) and output dataflow circuit \\(B\\) always produce the same results, and \\(B\\) is free of data races and deadlocks.
-
-## Proving determinacy
-
-Proving that the dataflow circuit \\(B\\) is determinant (that it produces the same result regardless of schedule) becomes tricky when different operators can access a shared memory and there could be data races.
-In our work, we rule out the possibility of data races entirely through the use of *affine permission tokens* [?].
-
-The idea is that, in the dataflow circuit \\(B\\), which consists of a large number of distributed operators communicating with each other through channels, whenver a memory load/store operator needs access to the memory, it needs to possess the suitable permission token for the memory region it tries to read/write.
-Then, when the operator is done with reading/writing, the token is passed through channels to other nodes, when in turn gives other operators access to the same region.
-Most importantly, these tokens are *affine*, in the sense that operators cannot duplicate or create new tokens.
-These tokens are also *ghost* tokens, because they only exist in the reasoning about the dataflow circuit, and the actual execution of \\(B\\) will treat them as control/synchronization signals at the hardware level.
-
-Our proof obligation then becomes proving that there exists a consistent way the produced circuit can distribute these affine permission tokens.
-In terms of proof engineering, the challenging part is to find a formulation of this property that allows it to propagate through various compiler passes and existing forward simulation proofs without any additional proof changes.
-We refer the reader to our full paper for details on how this is done [?].
-
-## Pipelining and Optimizations
-
-?
-
-# Evaluation against unverified dataflow compilers
-
-Formally verifying a compiler usually comes with a significant amount of human labor and cost in compilation quality (because optimizations are difficult to formally verify).
-Therefore, let's see how worse our verified dataflow compiler is compared to unverified ones.
-
-In this evaluation, we compare against two unverified compilers in two slightly pipelines:
-
-# Related work and conclusion
-
-- Internal determinism
+## Related Work
