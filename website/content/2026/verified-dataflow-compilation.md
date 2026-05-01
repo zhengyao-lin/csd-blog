@@ -137,12 +137,12 @@ We have recently built prototype dataflow compiler called Wavelet [?], with its 
 prover [?], guaranteeing that it always generates correct dataflow circuits.
 We briefly summarize our approach in this section with examples, and refer the reader to our full paper [?] for details.
 
-Wavelet consists of five compilation passes.
-Its input language is a simple imperative language called \\(\mathbb{L}_{let}\\),
+**Source Language and Type System**.
+The input language of Wavelet is a simple imperative language called \\(\mathbb{L}\_{let}\\),
 which is equipped with a capability type system and a construct called *fence* to
 soundly mark synchronization points.
 
-\\(\mathbb{L}_{let}\\) is currently embedded in Rust,
+\\(\mathbb{L}\_{let}\\) is currently embedded in Rust,
 and a lightly abridged example looks like this,
 where `f` maps each element of an array A from `i` to `n` through another function `g`,
 whose body is omitted.
@@ -174,6 +174,103 @@ Here in the example, `load_A(i)` consumes the capability for `A[i]`.
 In order to type-check `store_A(i, y)`, which may conflict with `load_A(i)` if run in parallel,
 we have to add a `fence!()` for synchronization.
 
+**Elaboration.**
+Using these capabilities and fence annotations, Wavelet then elaborates the source
+\\(\mathbb{L}\_{let}\\) program into an \\(\mathbb{L}^*\_{let}\\) program,
+which replaces the capability types and fences with explicit permission variables,
+and represent memory ordering with the data dependencies of permission variables.
+```Rust
+fn f(i: u32, n: u32, p: uniq A[i..n]) {
+  if i < n {
+    // p1: uniq A[i]
+    // p2, p3, p4: uniq A[i + 1..n]
+    let (p1, p2) = join_split(p);
+    let x, p3 = load_A(i, p1);
+    let y = g(x);
+    let ((), p4) = store_A(i, y, p3);
+    f(i + 1, n, p2)
+  } else { () }
+}
+```
+Each permission variable denotes a unique or shared permission to a slice of an array and
+can only be used at most once (i.e., they are affine).
+The permission variables can be manipulated with a special ghost function `join_split(...)`, which
+combines the input permissions and splits them in a way that would satisfy the following
+usage of the output permissions.
+
+In essence, this elaboration step converts *implicit* memory ordering enforced by sequential
+control flow into *explicit* data dependencies, in order to facilitate further compilation to
+dataflow circuits.
+At this point, any two adjacent operations in the program can reorder without affecting
+the final result, as long as no data dependency is violated.
+In particular, the call to `store_A` in the example and the tail recursive call to `f`
+can run in parallel, since they do not have any data dependencies between them.
+
+**Dataflow Compilation.**
+In the core passes of Wavelet, we translate this \\(\mathbb{L}^*\_{let}\\) program
+into a dataflow circuit, formalized in a dataflow calculus called \\(\mathbb{L}\_{flow}\\).
+The compiled example looks like the following.
+
+<img src="/2026/verified-dataflow-compilation/wavelet-circuit.svg" style="height: 20em" />
+
+In Wavelet, each function is individually compiled to a dataflow circuit, potentially with
+references to other functions (like `g` in this circuit), and we have a separate linking
+pass to syntactically "stitch" the circuits into one final circuit.
+This dataflow circuit can then be optimized and mapped to RDAs like RipTide [?] or
+further lowered to hardware designs for dynamically-scheduled HLS.
+
+**Formal Verification.**
+In total, Wavelet consists of two front-end passes for type checking and elaboration,
+two core passes for translating sequential functions into a single dataflow circuit,
+and a final pass for optimization and lowering to backends.
+The two core passes are *formalized and verified* in the Lean theorem prover, proving two
+important properties about the compiler:
+
+- *Forward Simulation*: The input program is (weakly) simulated by the output dataflow circuit, essentially meaning that the dataflow circuit has at least one schedule that provably behaves the same as the input program.
+- *Determinacy*: The dataflow circuit has a deterministic result, no matter which execution schedule we choose.
+
+Together, these two results guarantee that the produced dataflow circuit behaves exactly the same
+as the input source program over all schedules, and also rule out the possibility of any deadlock
+or data race in the dataflow circuit.
+
+A key novelty of Wavelet is how the determinacy property is formally verified in a modular way
+across all five passes, without any changes to the forward simulation proofs.
+Our front-end type checker and elaboration validates an important assumption of our determinacy
+theorem, which is that there exists a placement of disjoint *permission tokens*, so that they can
+flow through the dataflow circuit in an affine way (i.e., no duplication or creation of new tokens).
+This guarantee is formulated as a progress property that is preserved through various forward
+simulations, and then finally be used for determinacy theorems at the dataflow level.
+
 ## Comparison with RipTide and LLVM CIRCT
 
+We compared Wavelet with two existing, unverified dataflow compiler in RipTide [?] and
+LLVM CIRCT [?] in terms of the performance and resource usage of dataflow circuits compiled
+from a collection of 10 benchmark programs from RipTide.
+The results are shown below.
+
+(IMAGE)
+
+RipTide is an RDA focusing on energy efficiency and general-purpose programmability, and we used
+dataflow-level simulators for both RipTide and Wavelet, collecting simulation steps and numbers of
+operators in the compiled dataflow circuit.
+CIRCT [?] is a collection of MLIR-based IRs and compilers for hardware design. we are
+specifically using a compilation pipeline in CIRCT for dynamically-scheduled HLS.
+We compile the source programs using both Wavelet and CIRCT to an intermediate MLIR dialect called
+`handshake` [?], and then further lower it to RTL designs in SystemVerilog using CIRCT itself.
+
+Performance-wise, ...
+
+Area-wise, ...
+
 ## Related Work
+
+Dataflow itself is a general idea that has seen wide applications such as in dataflow architectures,
+stream processing, functional reactive programming.
+If you are interested in reading more, here are some references to recent papers that
+are relevant to this topic:
+
+TODO
+
+## Acknowledgements
+
+## References
