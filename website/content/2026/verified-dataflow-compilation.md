@@ -11,17 +11,17 @@ author = {name = "Zhengyao Lin", url = "https://zhengyao.page/" }
 committee = []
 +++
 
-*Dataflow architectures* [?] are computer architectures designed to directly execute programs represented as *dataflow circuits*,
+*Dataflow architectures* are computer architectures designed to directly execute programs represented as *dataflow circuits*,
 which consist of a set of operators (instructions) with data dependencies between them, but without any implicit control flow
 (i.e., no "next" instruction, jumps, or basic blocks).
 
-The paradigm of dataflow has seen a re-emergence in reconfigurable dataflow architectures (RDAs) [?] and
-dynamically-scheduled high-level synthesis (HLS) [?].
+The paradigm of dataflow has seen a re-emergence in reconfigurable dataflow architectures (RDAs) [^riptide] [^pipestitch] [^ripple] [^tyr] [^plasticine] and
+dynamically-scheduled high-level synthesis (HLS) [^dynamatic].
 In RDAs, since the program is compiled to a dataflow circuit ahead of time, the architecture can be designed
 to reduce energy costs in data movement (e.g., moving data between registers/cache/memory and ALUs)
 and handling instructions (e.g., fetching and decoding).
-These improvements can sometimes lead to over 100x better energy efficiency compared to off-the-shelf low-power CPUs [?].
-In dynamically-scheduled HLS [?], by making operators in the dataflow circuit data-driven without following a
+These improvements can sometimes lead to over 100x better energy efficiency compared to off-the-shelf low-power CPUs [^riptide].
+In dynamically-scheduled HLS [^dynamatic], by making operators in the dataflow circuit data-driven without following a
 static global schedule (i.e., asynchrony), we can achieve 6x speedup on certain irregular workloads compared to
 traditional statically-scheduled HLS.
 
@@ -34,7 +34,7 @@ To enable realistic applications, these operators also access *shared memory*.
 As a result, even a simple sequential source program becomes a highly distributed system with both
 message passing and shared memory, along with potential deadlocks and data races.
 
-In this blog post and our related PLDI paper [?], we tackle the problem of *formally verifying* dataflow compilation,
+In this blog post adapted from our PLDI paper [^wavelet], we tackle the problem of *formally verifying* dataflow compilation,
 which provably prevents any incorrect dataflow compilation and guarantees that the compiled dataflow circuit
 is correct and equivalent to the source program.
 
@@ -104,7 +104,7 @@ that on certain execution schedules, the `LD` of `Dist` in the second iteration 
 with the `ST` of `Dist` in the first iteration, resulting in a potential *data race*.
 
 There are in general two solutions to the memory ordering issue.
-The first is to use a *load-store queue* [?], which is an additional hardware unit that
+The first is to use a *load-store queue* [^dynamatic], which is an additional hardware unit that
 dynamically commits memory operations in a safe order.
 Out-of-order execution in CPUs (which is also dataflow in a sense) sometimes uses load-store queues
 for correct memory ordering.
@@ -132,7 +132,7 @@ blocking its own execution and potentially the execution of any upstream operato
 In general, a correct dataflow compiler must make sure that over *all possible execution schedules*, the parallel
 dataflow circuit behaves equivalently to the source program.
 Larger applications may scale to hundreds of operators, such as the following dataflow circuit for computing SHA-256
-compiled by the RipTide [?] dataflow compiler, and debugging an incorrect dataflow circuit with data races and
+compiled by the RipTide [^riptide] dataflow compiler, and debugging an incorrect dataflow circuit with data races and
 deadlocks would be a nightmare.
 
 <center>
@@ -143,9 +143,9 @@ deadlocks would be a nightmare.
 
 The goal of our research is to use *formal verification* to prove the absence of any dataflow issues mentioned in the
 previous section.
-We have recently built a prototype dataflow compiler called Wavelet [?], with its core passes verified in the Lean theorem
-prover [?], guaranteeing that it always generates correct dataflow circuits.
-We briefly summarize our approach in this section with examples, and refer the reader to our full paper [?] for details.
+We have recently built a prototype dataflow compiler called Wavelet [^wavelet], with its core passes verified in the [Lean](https://lean-lang.org/) theorem
+prover, guaranteeing that it always generates correct dataflow circuits.
+We briefly summarize our approach in this section with examples, and refer the reader to our full paper [^wavelet] for details.
 
 **Source Language and Type System**.
 The input language of Wavelet is a simple imperative language called \\(\mathbb{L}\_{let}\\),
@@ -228,7 +228,7 @@ The compiled example looks like the following.
 In Wavelet, each function is individually compiled to a dataflow circuit, potentially with
 references to other functions (like `g` in this circuit), and we have a separate linking
 pass to syntactically "stitch" the circuits into one final circuit.
-This dataflow circuit can then be optimized and mapped to RDAs like RipTide [?] or
+This dataflow circuit can then be optimized and mapped to RDAs like RipTide [^riptide] or
 further lowered to hardware designs for dynamically-scheduled HLS.
 
 **Formal Verification.**
@@ -255,8 +255,8 @@ simulations, and then finally be used for determinacy theorems at the dataflow l
 
 ## Comparison with RipTide and LLVM CIRCT
 
-We compared Wavelet with two existing, unverified dataflow compiler in RipTide [?] and
-LLVM CIRCT [?] in terms of the performance and resource usage of dataflow circuits compiled
+We compared Wavelet with two existing, unverified dataflow compiler in RipTide [^riptide] and
+[LLVM CIRCT](https://circt.llvm.org/) in terms of the performance and resource usage of dataflow circuits compiled
 from a collection of 10 benchmark programs from RipTide.
 The results are shown below.
 
@@ -277,10 +277,10 @@ larger dataflow circuits than RipTide.
 We attribute this gap to the different memory ordering strategy in Wavelet, which induces more
 synchronization signals than RipTide.
 
-CIRCT [?] is a collection of MLIR-based IRs and compilers for hardware design, and we are
+[CIRCT](https://circt.llvm.org/) is a collection of MLIR-based IRs and compilers for hardware design, and we are
 specifically using a compilation pipeline in CIRCT for dynamically-scheduled HLS.
 We compile the source programs using both Wavelet and CIRCT to an intermediate MLIR dialect called
-`handshake` [?], and then further lower it to RTL designs in SystemVerilog using CIRCT itself.
+[`handshake`](https://circt.llvm.org/docs/Dialects/Handshake/), and then further lower it to RTL designs in SystemVerilog using CIRCT itself.
 
 Wavelet-compiled dataflow circuits are 1.2\\(\times\\) slower than CIRCT's results, but are smaller
 with about 70% of the resource usage of CIRCT.
@@ -309,3 +309,20 @@ I would like to thank my awesome collaborators Yi Cai and Milijana Surbatovich a
 University of Maryland.
 
 ## References
+
+[^riptide]: Graham Gobieski, Souradip Ghosh, Marijn Heule, Todd Mowry, Tony Nowatzki, Nathan Beckmann, and Brandon Lucia. 2023. RipTide: A Programmable, Energy-Minimal Dataflow Compiler and Architecture. In Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’22), IEEE Press, Chicago, Illinois, USA, 546–564. DOI:https://doi.org/10.1109/MICRO56248.2022.00046
+<br></br>
+
+[^pipestitch]: Nathan Serafin, Souradip Ghosh, Harsh Desai, Nathan Beckmann, and Brandon Lucia. 2023. Pipestitch: An energy-minimal dataflow architecture with lightweight threads. In Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’23), Association for Computing Machinery, Toronto, ON, Canada, 1409–1422. DOI:https://doi.org/10.1145/3613424.3614283
+<br></br>
+
+[^tyr]: Nikhil Agarwal, Mitchell Fream, Souradip Ghosh, Brian C. Schwedock, and Nathan Beckmann. 2024. The TYR Dataflow Architecture: Improving Locality by Taming Parallelism. In Proceedings of the 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO ’24), IEEE Press, Austin, TX, USA, 1184–1200. DOI:https://doi.org/10.1109/MICRO61859.2024.00089
+<br></br>
+
+[^plasticine]: Raghu Prabhakar, Yaqi Zhang, David Koeplinger, Matt Feldman, Tian Zhao, Stefan Hadjis, Ardavan Pedram, Christos Kozyrakis, and Kunle Olukotun. 2017. Plasticine: A Reconfigurable Architecture For Parallel Patterns. In Proceedings of the 44th Annual International Symposium on Computer Architecture (ISCA ’17), Association for Computing Machinery, Toronto, ON, Canada, 389–402. DOI:https://doi.org/10.1145/3079856.3080256
+<br></br>
+
+[^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CALIFORNIA, USA, 127–136. DOI:https://doi.org/10.1145/3174243.3174264
+<br></br>
+
+[^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026).
