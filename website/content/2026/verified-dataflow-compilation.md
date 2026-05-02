@@ -305,9 +305,8 @@ and formal verification for these topics:
 
 ## Acknowledgements
 
-I would like to thank my awesome collaborators [Yi Cai](https://tracycy.com/),
-[Milijana Surbatovich](https://msurbatovich.github.io/),
-[Joshua Gancher](https://gancher.dev/),
+This work would not be possible without my awesome collaborators [Yi Cai](https://tracycy.com/),
+[Milijana Surbatovich](https://msurbatovich.github.io/), [Joshua Gancher](https://gancher.dev/),
 and [Bryan Parno](https://www.andrew.cmu.edu/user/bparno/).
 
 ## References
