@@ -316,6 +316,9 @@ University of Maryland.
 [^pipestitch]: Nathan Serafin, Souradip Ghosh, Harsh Desai, Nathan Beckmann, and Brandon Lucia. 2023. Pipestitch: An energy-minimal dataflow architecture with lightweight threads. In Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’23), Association for Computing Machinery, Toronto, ON, Canada, 1409–1422. DOI:https://doi.org/10.1145/3613424.3614283
 <br></br>
 
+[^ripple]: Souradip Ghosh, Yufei Shi, Brandon Lucia, and Nathan Beckmann. 2025. Ripple: Asynchronous Programming for Spatial Dataflow Architectures. Proc. ACM Program. Lang. 9, PLDI (June 2025). DOI:https://doi.org/10.1145/3729256
+<br></br>
+
 [^tyr]: Nikhil Agarwal, Mitchell Fream, Souradip Ghosh, Brian C. Schwedock, and Nathan Beckmann. 2024. The TYR Dataflow Architecture: Improving Locality by Taming Parallelism. In Proceedings of the 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO ’24), IEEE Press, Austin, TX, USA, 1184–1200. DOI:https://doi.org/10.1109/MICRO61859.2024.00089
 <br></br>
 
