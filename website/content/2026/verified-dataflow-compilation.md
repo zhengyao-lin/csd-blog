@@ -1,6 +1,6 @@
 +++
 title = "Compiling Programs to Dataflow Circuits, Formally Verified™"
-date = 2026-01-29
+date = 2026-05-02
 
 [taxonomies]
 areas = ["Programming Languages"]
@@ -99,7 +99,7 @@ However, now we have an issue with memory ordering.
 The loads and stores to `Dist` have various dependencies that are *originally* enforced by the
 sequential control flow; e.g., loads in the next iteration may overlap with the store in
 the previous iteration with a read-after-write dependency.
-They are now lost due to the more parallel semantics of dataflow circuits, since it is possible
+These dependencies are now lost due to the parallel semantics of dataflow circuits, since it is possible
 that on certain execution schedules, the `LD` of `Dist` in the second iteration runs in parallel
 with the `ST` of `Dist` in the first iteration, resulting in a potential *data race*.
 
@@ -131,7 +131,7 @@ blocking its own execution and potentially the execution of any upstream operato
 
 In general, a correct dataflow compiler must make sure that over *all possible execution schedules*, the parallel
 dataflow circuit behaves equivalently to the source program.
-Larger applications may scale to hundreds of operators, such as the following dataflow circuit for computing SHA-256
+Larger applications may scale to hundreds of operators, such as the following dataflow circuit for computing SHA-256,
 compiled by the RipTide [^riptide] dataflow compiler, and debugging an incorrect dataflow circuit with data races and
 deadlocks would be a nightmare.
 
@@ -178,7 +178,7 @@ reduced to this form.
 Each function needs to be annotated with an initial *capability*, in this case
 `A: uniq @ i..n`, which means that the function requires the unique or write capability
 for the array `A` from indices `i` to `n`.
-In the body, the user needs to occasionally add an annotation of `fence!()`, which tells
+In the body, the user occasionally needs to add a `fence!()` annotation, which tells
 the type checker to reclaim any used capabilities for future memory operations.
 Here in the example, `load_A(i)` consumes the capability for `A[i]`.
 In order to type-check `store_A(i, y)`, which may conflict with `load_A(i)` if run in parallel,
@@ -192,12 +192,10 @@ and represents memory ordering with the data dependencies of permission variable
 ```Rust
 fn f(i: u32, n: u32, p: uniq A[i..n]) {
   if i < n {
-    // p1: uniq A[i]
-    // p2, p3, p4: uniq A[i + 1..n]
-    let (p1, p2) = join_split(p);
-    let (x, p3) = load_A(i, p1);
+    let (p1, p2) = join_split(p);     // p1: uniq A[i], p2: uniq A[i+1..n]
+    let (x, p3) = load_A(i, p1);      // p3: uniq A[i]
     let y = g(x);
-    let ((), p4) = store_A(i, y, p3);
+    let ((), p4) = store_A(i, y, p3); // p4: uniq A[i]
     f(i + 1, n, p2)
   } else { () }
 }
@@ -246,7 +244,7 @@ as the input source program over all schedules, and also rule out the possibilit
 or data race in the dataflow circuit.
 
 A key novelty of Wavelet is how the determinacy property is formally verified in a modular way
-across all five passes, without any changes to the forward simulation proofs.
+across the entire pipeline, without any changes to the forward simulation proofs.
 Our front-end type checker and elaboration validate an important assumption of our determinacy
 theorem, which is that there exists a placement of disjoint *permission tokens*, so that they can
 flow through the dataflow circuit in an affine way (i.e., no duplication or creation of new tokens).
@@ -265,11 +263,11 @@ The results are shown below.
 </center>
 
 RipTide is an RDA focusing on energy efficiency and general-purpose programmability, and we used
-dataflow-level simulators for both RipTide and Wavelet, collecting simulation steps and numbers of
+dataflow-level simulators for both RipTide and Wavelet, collecting the number of simulation steps and
 operators in the compiled dataflow circuit.
 In the comparison, we also include results for the RipTide compiler without the *streamification*
 optimization, which replaces a set of operators that compute the loop variable and condition
-to a single `Stream` operator.
+with a single `Stream` operator.
 Since Wavelet does not have this dataflow graph rewrite, excluding it yields a fairer comparison
 of the base compilation strategies.
 Overall, without the stream operator, Wavelet is 1.69\\(\times\\) slower and produces 2.26\\(\times\\)
@@ -310,22 +308,22 @@ University of Maryland.
 
 ## References
 
-[^riptide]: Graham Gobieski, Souradip Ghosh, Marijn Heule, Todd Mowry, Tony Nowatzki, Nathan Beckmann, and Brandon Lucia. 2022. RipTide: A Programmable, Energy-Minimal Dataflow Compiler and Architecture. In Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’22), IEEE Press, Chicago, Illinois, USA, 546–564. DOI:https://doi.org/10.1109/MICRO56248.2022.00046
+[^riptide]: Graham Gobieski, Souradip Ghosh, Marijn Heule, Todd Mowry, Tony Nowatzki, Nathan Beckmann, and Brandon Lucia. 2022. RipTide: A Programmable, Energy-Minimal Dataflow Compiler and Architecture. In Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’22), IEEE Press, Chicago, Illinois, USA, 546–564. <https://doi.org/10.1109/MICRO56248.2022.00046>
 <br></br>
 
-[^pipestitch]: Nathan Serafin, Souradip Ghosh, Harsh Desai, Nathan Beckmann, and Brandon Lucia. 2023. Pipestitch: An energy-minimal dataflow architecture with lightweight threads. In Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’23), Association for Computing Machinery, Toronto, ON, Canada, 1409–1422. DOI:https://doi.org/10.1145/3613424.3614283
+[^pipestitch]: Nathan Serafin, Souradip Ghosh, Harsh Desai, Nathan Beckmann, and Brandon Lucia. 2023. Pipestitch: An energy-minimal dataflow architecture with lightweight threads. In Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’23), Association for Computing Machinery, Toronto, ON, Canada, 1409–1422. <https://doi.org/10.1145/3613424.3614283>
 <br></br>
 
-[^ripple]: Souradip Ghosh, Yufei Shi, Brandon Lucia, and Nathan Beckmann. 2025. Ripple: Asynchronous Programming for Spatial Dataflow Architectures. Proc. ACM Program. Lang. 9, PLDI (June 2025). DOI:https://doi.org/10.1145/3729256
+[^ripple]: Souradip Ghosh, Yufei Shi, Brandon Lucia, and Nathan Beckmann. 2025. Ripple: Asynchronous Programming for Spatial Dataflow Architectures. Proc. ACM Program. Lang. 9, PLDI (June 2025). <https://doi.org/10.1145/3729256>
 <br></br>
 
-[^tyr]: Nikhil Agarwal, Mitchell Fream, Souradip Ghosh, Brian C. Schwedock, and Nathan Beckmann. 2024. The TYR Dataflow Architecture: Improving Locality by Taming Parallelism. In Proceedings of the 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO ’24), IEEE Press, Austin, TX, USA, 1184–1200. DOI:https://doi.org/10.1109/MICRO61859.2024.00089
+[^tyr]: Nikhil Agarwal, Mitchell Fream, Souradip Ghosh, Brian C. Schwedock, and Nathan Beckmann. 2024. The TYR Dataflow Architecture: Improving Locality by Taming Parallelism. In Proceedings of the 2024 57th IEEE/ACM International Symposium on Microarchitecture (MICRO ’24), IEEE Press, Austin, TX, USA, 1184–1200. <https://doi.org/10.1109/MICRO61859.2024.00089>
 <br></br>
 
-[^plasticine]: Raghu Prabhakar, Yaqi Zhang, David Koeplinger, Matt Feldman, Tian Zhao, Stefan Hadjis, Ardavan Pedram, Christos Kozyrakis, and Kunle Olukotun. 2017. Plasticine: A Reconfigurable Architecture For Parallel Patterns. In Proceedings of the 44th Annual International Symposium on Computer Architecture (ISCA ’17), Association for Computing Machinery, Toronto, ON, Canada, 389–402. DOI:https://doi.org/10.1145/3079856.3080256
+[^plasticine]: Raghu Prabhakar, Yaqi Zhang, David Koeplinger, Matt Feldman, Tian Zhao, Stefan Hadjis, Ardavan Pedram, Christos Kozyrakis, and Kunle Olukotun. 2017. Plasticine: A Reconfigurable Architecture For Parallel Patterns. In Proceedings of the 44th Annual International Symposium on Computer Architecture (ISCA ’17), Association for Computing Machinery, Toronto, ON, Canada, 389–402. <https://doi.org/10.1145/3079856.3080256>
 <br></br>
 
-[^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CA, USA, 127–136. DOI:https://doi.org/10.1145/3174243.3174264
+[^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CA, USA, 127–136. <https://doi.org/10.1145/3174243.3174264>
 <br></br>
 
-[^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026).
+[^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026). <https://doi.org/10.1145/3808263>
