@@ -1,5 +1,5 @@
 +++
-title = "Compiling Programs to Dataflow Circuits, Formally Verified™"
+title = "Verified Compilation to Dataflow Circuits"
 date = 2026-05-02
 
 [taxonomies]
@@ -303,8 +303,10 @@ on programming languages and formal verification for these topics:
 
 ## Acknowledgements
 
-I would like to thank my awesome collaborators Yi Cai and Milijana Surbatovich at the
-University of Maryland.
+I would like to thank my awesome collaborators [Yi Cai](https://tracycy.com/),
+[Milijana Surbatovich](https://msurbatovich.github.io/),
+[Joshua Gancher](https://gancher.dev/),
+and [Bryan Parno](https://www.andrew.cmu.edu/user/bparno/).
 
 ## References
 
@@ -326,4 +328,4 @@ University of Maryland.
 [^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CA, USA, 127–136. <https://doi.org/10.1145/3174243.3174264>
 <br></br>
 
-[^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026). <https://doi.org/10.1145/3808263>
+[^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026). <https://doi.org/10.1145/3808263>. [GitHub Repo](https://github.com/plum-umd/wavelet)
