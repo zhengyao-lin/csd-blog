@@ -25,7 +25,7 @@ In dynamically-scheduled HLS [?], by making operators in the dataflow circuit da
 static global schedule (i.e., asynchrony), we can achieve 6x speedup on certain irregular workloads compared to
 traditional statically-scheduled HLS.
 
-A key problem, however, is that while parallelism and dynamic scheduling benefit performance, they simultaneously
+A key problem, however, is that while dataflow and dynamic scheduling benefit energy efficiency and performance, they simultaneously
 create challenges for *correctness*.
 When programming RDAs or using dynamic HLS, the typical workflow is to compile a high-level sequential program
 (in C, for example) into an asynchronous dataflow circuit.
@@ -57,7 +57,9 @@ for 0 <= e < E
 
 We first compile the loop body to the dataflow circuit below.
 
-<img src="/2026/verified-dataflow-compilation/loop-body.svg" style="height: 20em" />
+<center>
+<img src="/2026/verified-dataflow-compilation/loop-body.png" style="height: 18em" />
+</center>
 
 This dataflow circuit is essentially a collection of memory and arithmetic operations
 in the loop body: we have the load operators (`LD`) for each array that takes an index
@@ -88,7 +90,10 @@ To see this, we compile the loop header as well in the following extended circui
 additional part of the circuit annotated with `LH` (for loop header) will emit a sequence
 of edges `0 .. E - 1` to the loop body circuit.
 
-(IMAGE)
+
+<center>
+<img src="/2026/verified-dataflow-compilation/loop-header.png" style="height: 18em" />
+</center>
 
 However, now we have an issue with memory ordering.
 The loads and store to `Dist` have various dependencies that are *originally* enforced by the
@@ -109,8 +114,11 @@ which is to add an additional data dependency as a back-edge from the `ST` to th
 send a *memory synchronization* signal.
 This way, we can make sure that `LD`s of `Dist` will always wait for the `ST` in the previous iteration
 to finish, avoiding any data races.
+These additional data dependencies are denoted as green edges below in our final dataflow circuit.
 
-(IMAGE)
+<center>
+<img src="/2026/verified-dataflow-compilation/full.png" style="height: 18em" />
+</center>
 
 In tension with avoiding data races, the dataflow compiler still needs to extract as much parallelism
 as possible and avoid overly synchronizing the dataflow circuit, since otherwise it would lose the
@@ -127,13 +135,15 @@ Larger applications may scale to hundreds of operators, such as the following da
 compiled by the RipTide [?] dataflow compiler, and debugging an incorrect dataflow circuit with data races and
 deadlocks would be a nightmare.
 
-(IMAGE)
+<center>
+<img src="/2026/verified-dataflow-compilation/sha256.svg" />
+</center>
 
 ## Wavelet: A Formally Verified Dataflow Compiler
 
 The goal of our research is to use *formal verification* to prove the absence of any dataflow issues mentioned in the
 previous section.
-We have recently built prototype dataflow compiler called Wavelet [?], with its core passes verified in the Lean theorem
+We have recently built a prototype dataflow compiler called Wavelet [?], with its core passes verified in the Lean theorem
 prover [?], guaranteeing that it always generates correct dataflow circuits.
 We briefly summarize our approach in this section with examples, and refer the reader to our full paper [?] for details.
 
@@ -211,7 +221,9 @@ In the core passes of Wavelet, we translate this \\(\mathbb{L}^*\_{let}\\) progr
 into a dataflow circuit, formalized in a dataflow calculus called \\(\mathbb{L}\_{flow}\\).
 The compiled example looks like the following.
 
-<img src="/2026/verified-dataflow-compilation/wavelet-circuit.svg" style="height: 20em" />
+<center>
+<img src="/2026/verified-dataflow-compilation/wavelet-circuit.png" style="height: 18em" />
+</center>
 
 In Wavelet, each function is individually compiled to a dataflow circuit, potentially with
 references to other functions (like `g` in this circuit), and we have a separate linking
@@ -248,7 +260,9 @@ LLVM CIRCT [?] in terms of the performance and resource usage of dataflow circui
 from a collection of 10 benchmark programs from RipTide.
 The results are shown below.
 
-(IMAGE)
+<center>
+<img src="/2026/verified-dataflow-compilation/eval.svg" />
+</center>
 
 RipTide is an RDA focusing on energy efficiency and general-purpose programmability, and we used
 dataflow-level simulators for both RipTide and Wavelet, collecting simulation steps and numbers of
