@@ -253,24 +253,45 @@ The results are shown below.
 RipTide is an RDA focusing on energy efficiency and general-purpose programmability, and we used
 dataflow-level simulators for both RipTide and Wavelet, collecting simulation steps and numbers of
 operators in the compiled dataflow circuit.
-CIRCT [?] is a collection of MLIR-based IRs and compilers for hardware design. we are
+In the comparison, we also include results for the RipTide compiler without the *streamification*
+optimization, which replaces a set of operators that compute the loop variable and condition
+to a single `Stream` operator.
+Since Wavelet does not have this dataflow graph rewrite, excluding it yields a fairer comparison
+of the base compilation strategies.
+Overall, without the stream operator, Wavelet is 1.69\\(\times\\) slower and produces 2.26\\(\times\\)
+larger dataflow circuits than RipTide.
+We attribute this gap to the different memory ordering strategy in Wavelet, which induces more
+synchronization signals than RipTide.
+
+CIRCT [?] is a collection of MLIR-based IRs and compilers for hardware design, and we are
 specifically using a compilation pipeline in CIRCT for dynamically-scheduled HLS.
 We compile the source programs using both Wavelet and CIRCT to an intermediate MLIR dialect called
 `handshake` [?], and then further lower it to RTL designs in SystemVerilog using CIRCT itself.
 
-Performance-wise, ...
-
-Area-wise, ...
+Wavelet-compiled dataflow circuits are 1.2\\(\times\\) slower than CIRCT's results, but are smaller
+with about 70% of the resource usage of CIRCT.
+The difference in resource usage is mostly due to different control-flow primitives used in CIRCT,
+which uses a [`control_merge` operator](https://circt.llvm.org/docs/Dialects/Handshake/#handshakecontrol_merge-circthandshakecontrolmergeop)
+for handling jumps between basic blocks.
 
 ## Related Work
 
-Dataflow itself is a general idea that has seen wide applications such as in dataflow architectures,
-stream processing, functional reactive programming.
-If you are interested in reading more, here are some references to recent papers that
-are relevant to this topic:
+Dataflow as a general idea that has seen wide applications such as in dataflow architectures,
+stream processing, and functional reactive programming.
+If you are interested in reading more, here are some references to recent papers
+on programming languages and formal verification for these topics:
 
-TODO
+- Languages and formal verification for asynchronous dataflow
+  + Graphiti: Formally Verified Out-of-Order Execution in Dataflow Circuits, Herklotz et al., ASPLOS 2026.
+  + Ripple: Asynchronous Programming for Spatial Dataflow Architectures, Ghosh et al., PLDI 2025.
+  + A Mechanized Semantics for Dataflow Circuits, Law et al., OOPSLA 2025.
+- Types and semantics for stream processing
+  + Flo: A Semantic Foundation for Progressive Stream Processing, Laddad et al., POPL 2025
+  + Stream Types, Cutler et al., PLDI 2024
 
 ## Acknowledgements
+
+I would like to thank my awesome collaborators Yi Cai and Milijana Surbatovich at the
+University of Maryland.
 
 ## References
