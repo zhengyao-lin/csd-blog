@@ -20,29 +20,29 @@ dynamically-scheduled high-level synthesis (HLS) [^dynamatic].
 In RDAs, since the program is compiled to a dataflow circuit ahead of time, the architecture can be designed
 to reduce energy costs in data movement (e.g., moving data between registers/cache/memory and ALUs)
 and handling instructions (e.g., fetching and decoding).
-These improvements can sometimes lead to over 100x better energy efficiency compared to off-the-shelf low-power CPUs [^riptide].
+These improvements can sometimes lead to over 100\\(\times\\) better energy efficiency compared to off-the-shelf low-power CPUs [^riptide].
 In dynamically-scheduled HLS [^dynamatic], by making operators in the dataflow circuit data-driven without following a
-static global schedule (i.e., asynchrony), we can achieve 6x speedup on certain irregular workloads compared to
+static global schedule (i.e., asynchrony), we can achieve 6\\(\times\\) speedup on certain irregular workloads compared to
 traditional statically-scheduled HLS.
 
 A key problem, however, is that while dataflow and dynamic scheduling benefit energy efficiency and performance, they simultaneously
 create challenges for *correctness*.
 When programming RDAs or using dynamic HLS, the typical workflow is to compile a high-level sequential program
 (in C, for example) into an asynchronous dataflow circuit.
-Each instruction in the original sequential program is converted into a parallel operator in the dataflow circuit. 
+Each instruction in the original sequential program is converted into a parallel operator in the dataflow circuit.
 To enable realistic applications, these operators also access *shared memory*.
 As a result, even a simple sequential source program becomes a highly distributed system with both
 message passing and shared memory, along with potential deadlocks and data races.
 
 In this blog post adapted from our PLDI paper [^wavelet], we tackle the problem of *formally verifying* dataflow compilation,
-which provably prevents any incorrect dataflow compilation and guarantees that the compiled dataflow circuit
-is correct and equivalent to the source program.
+which provably rules out compilation issues and guarantees that the compiled dataflow circuit
+is equivalent to the source program.
 
 ## Examples and Challenges
 
 Let us consider a simple example of dataflow compilation to get a sense of how it works and what the challenges are.
 The example source program is a single relaxation step in the [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
-The input is a graph represented as an edge list, where each edge `e = 1 .. E - 1` has source vertex `Src[e]`, destination vertex `Dst[e]`, and weight `W[e]`.
+The input is a graph represented as an edge list, where each edge `e = 0 .. E - 1` has source vertex `Src[e]`, destination vertex `Dst[e]`, and weight `W[e]`.
 The current distance to each vertex is stored in the array `Dist`,
 and the loop below iterates through all edges and updates the distance of a node
 if a shorter path is found.
@@ -62,20 +62,20 @@ We first compile the loop body to the dataflow circuit below.
 </center>
 
 This dataflow circuit is essentially a collection of memory and arithmetic operations
-in the loop body: we have the load operators (`LD`) for each array that takes an index
-to be loaded from, store operators (`ST`) that stores the input value to the input index,
+in the loop body: we have the load operators (`LD`) for each array that take an index
+to be loaded from, store operators (`ST`) that store the input value at the input index,
 and arithmetic operators (`+` and `<`).
 The two steer operators (`T`) are used for encoding branching.
-It takes an input value and a branch condition (in this case computed by the comparison
+Each takes an input value and a branch condition (in this case computed by the comparison
 operator), forwards the value to the output if the condition is true, and otherwise
 discards the input.
 Besides the operators, the channels (edges) between them reflect the data-
 and control-dependencies in the source imperative program.
 
-Semantically, these operators mentioned above are data-driven and parallel: they each
-act like a small recursive process that waits for inputs, does the operation, and
+Semantically, these operators are data-driven and parallel: each
+acts like a small recursive process that waits for inputs, does the operation, and
 pushes outputs to its output channels.
-The channels between them are queues with non-blocking send (except on full buffer)
+The channels between them are queues with non-blocking sends (except on full buffer)
 and blocking reads.
 As a result, operators without dependencies between them can potentially run in parallel,
 modulo hardware timing.
@@ -88,7 +88,7 @@ While such parallelism is great for performance, it also leads to
 correctness issues in memory ordering.
 To see this, we compile the loop header as well in the following extended circuit, where the
 additional part of the circuit annotated with `LH` (for loop header) will emit a sequence
-of edges `0 .. E - 1` to the loop body circuit.
+of edge indices `0 .. E - 1` to the loop body circuit.
 
 
 <center>
@@ -96,8 +96,8 @@ of edges `0 .. E - 1` to the loop body circuit.
 </center>
 
 However, now we have an issue with memory ordering.
-The loads and store to `Dist` have various dependencies that are *originally* enforced by the
-sequential control-flow; e.g., loads in the next iteration may overlap with the store in
+The loads and stores to `Dist` have various dependencies that are *originally* enforced by the
+sequential control flow; e.g., loads in the next iteration may overlap with the store in
 the previous iteration with a read-after-write dependency.
 They are now lost due to the more parallel semantics of dataflow circuits, since it is possible
 that on certain execution schedules, the `LD` of `Dist` in the second iteration runs in parallel
@@ -114,7 +114,7 @@ which is to add an additional data dependency as a back-edge from the `ST` to th
 send a *memory synchronization* signal.
 This way, we can make sure that `LD`s of `Dist` will always wait for the `ST` in the previous iteration
 to finish, avoiding any data races.
-These additional data dependencies are denoted as green edges below in our final dataflow circuit.
+These additional data dependencies are denoted by green edges below in our final dataflow circuit.
 
 <center>
 <img src="/2026/verified-dataflow-compilation/full.png" style="height: 18em" />
@@ -125,7 +125,7 @@ as possible and avoid overly synchronizing the dataflow circuit, since otherwise
 parallelism benefits of the hardware.
 
 **Other Correctness Issues.**
-Besides data races, *deadlocks* could also happen in an asynchronous dataflow circuit.
+Besides data races, *deadlocks* can also occur in an asynchronous dataflow circuit.
 The channels between operators have a finite buffer size, and a sender has to wait if its output channel is full,
 blocking its own execution and potentially the execution of any upstream operators.
 
@@ -147,14 +147,14 @@ We have recently built a prototype dataflow compiler called Wavelet [^wavelet], 
 prover, guaranteeing that it always generates correct dataflow circuits.
 We briefly summarize our approach in this section with examples, and refer the reader to our full paper [^wavelet] for details.
 
-**Source Language and Type System**.
+**Source Language and Type System.**
 The input language of Wavelet is a simple imperative language called \\(\mathbb{L}\_{let}\\),
-which is equipped with a capability type system and a construct called *fence* to
-soundly mark synchronization points.
+which is equipped with a *capability type system* that tracks which parts of memory are permitted to be accessed,
+and a construct called *fence* to soundly mark synchronization points.
 
 \\(\mathbb{L}\_{let}\\) is currently embedded in Rust,
 and a lightly abridged example looks like this,
-where `f` maps each element of an array A from `i` to `n` through another function `g`,
+where `f` maps each element of the array `A` from `i` to `n` through another function `g`,
 whose body is omitted.
 ```Rust
 #[cap(A: uniq @ i..n)]
@@ -188,14 +188,14 @@ we have to add a `fence!()` for synchronization.
 Using these capabilities and fence annotations, Wavelet then elaborates the source
 \\(\mathbb{L}\_{let}\\) program into an \\(\mathbb{L}^*\_{let}\\) program,
 which replaces the capability types and fences with explicit permission variables,
-and represent memory ordering with the data dependencies of permission variables.
+and represents memory ordering with the data dependencies of permission variables.
 ```Rust
 fn f(i: u32, n: u32, p: uniq A[i..n]) {
   if i < n {
     // p1: uniq A[i]
     // p2, p3, p4: uniq A[i + 1..n]
     let (p1, p2) = join_split(p);
-    let x, p3 = load_A(i, p1);
+    let (x, p3) = load_A(i, p1);
     let y = g(x);
     let ((), p4) = store_A(i, y, p3);
     f(i + 1, n, p2)
@@ -204,8 +204,8 @@ fn f(i: u32, n: u32, p: uniq A[i..n]) {
 ```
 Each permission variable denotes a unique or shared permission to a slice of an array and
 can only be used at most once (i.e., they are affine).
-The permission variables can be manipulated with a special ghost function `join_split(...)`, which
-combines the input permissions and splits them in a way that would satisfy the following
+The permission variables can be manipulated with a special ghost function `join_split(...)`,
+which combines the input permissions and splits them in a way that would satisfy the following
 usage of the output permissions.
 
 In essence, this elaboration step converts *implicit* memory ordering enforced by sequential
@@ -247,16 +247,16 @@ or data race in the dataflow circuit.
 
 A key novelty of Wavelet is how the determinacy property is formally verified in a modular way
 across all five passes, without any changes to the forward simulation proofs.
-Our front-end type checker and elaboration validates an important assumption of our determinacy
+Our front-end type checker and elaboration validate an important assumption of our determinacy
 theorem, which is that there exists a placement of disjoint *permission tokens*, so that they can
 flow through the dataflow circuit in an affine way (i.e., no duplication or creation of new tokens).
 This guarantee is formulated as a progress property that is preserved through various forward
-simulations, and then finally be used for determinacy theorems at the dataflow level.
+simulations, and is then finally used for determinacy theorems at the dataflow level.
 
 ## Comparison with RipTide and LLVM CIRCT
 
-We compared Wavelet with two existing, unverified dataflow compiler in RipTide [^riptide] and
-[LLVM CIRCT](https://circt.llvm.org/) in terms of the performance and resource usage of dataflow circuits compiled
+We compared Wavelet with two existing, unverified dataflow compilers in RipTide [^riptide] and
+[LLVM CIRCT](https://circt.llvm.org/), in terms of the performance and resource usage of dataflow circuits compiled
 from a collection of 10 benchmark programs from RipTide.
 The results are shown below.
 
@@ -282,15 +282,15 @@ specifically using a compilation pipeline in CIRCT for dynamically-scheduled HLS
 We compile the source programs using both Wavelet and CIRCT to an intermediate MLIR dialect called
 [`handshake`](https://circt.llvm.org/docs/Dialects/Handshake/), and then further lower it to RTL designs in SystemVerilog using CIRCT itself.
 
-Wavelet-compiled dataflow circuits are 1.2\\(\times\\) slower than CIRCT's results, but are smaller
-with about 70% of the resource usage of CIRCT.
+Wavelet-compiled dataflow circuits are 1.2\\(\times\\) slower than CIRCT-compiled circuits, but use only
+about 70% of CIRCT's resources.
 The difference in resource usage is mostly due to different control-flow primitives used in CIRCT,
 which uses a [`control_merge` operator](https://circt.llvm.org/docs/Dialects/Handshake/#handshakecontrol_merge-circthandshakecontrolmergeop)
 for handling jumps between basic blocks.
 
 ## Related Work
 
-Dataflow as a general idea that has seen wide applications such as in dataflow architectures,
+Dataflow as a general idea has seen wide applications such as in dataflow architectures,
 stream processing, and functional reactive programming.
 If you are interested in reading more, here are some references to recent papers
 on programming languages and formal verification for these topics:
@@ -300,8 +300,8 @@ on programming languages and formal verification for these topics:
   + Ripple: Asynchronous Programming for Spatial Dataflow Architectures, Ghosh et al., PLDI 2025.
   + A Mechanized Semantics for Dataflow Circuits, Law et al., OOPSLA 2025.
 - Types and semantics for stream processing
-  + Flo: A Semantic Foundation for Progressive Stream Processing, Laddad et al., POPL 2025
-  + Stream Types, Cutler et al., PLDI 2024
+  + Flo: A Semantic Foundation for Progressive Stream Processing, Laddad et al., POPL 2025.
+  + Stream Types, Cutler et al., PLDI 2024.
 
 ## Acknowledgements
 
@@ -310,7 +310,7 @@ University of Maryland.
 
 ## References
 
-[^riptide]: Graham Gobieski, Souradip Ghosh, Marijn Heule, Todd Mowry, Tony Nowatzki, Nathan Beckmann, and Brandon Lucia. 2023. RipTide: A Programmable, Energy-Minimal Dataflow Compiler and Architecture. In Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’22), IEEE Press, Chicago, Illinois, USA, 546–564. DOI:https://doi.org/10.1109/MICRO56248.2022.00046
+[^riptide]: Graham Gobieski, Souradip Ghosh, Marijn Heule, Todd Mowry, Tony Nowatzki, Nathan Beckmann, and Brandon Lucia. 2022. RipTide: A Programmable, Energy-Minimal Dataflow Compiler and Architecture. In Proceedings of the 55th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’22), IEEE Press, Chicago, Illinois, USA, 546–564. DOI:https://doi.org/10.1109/MICRO56248.2022.00046
 <br></br>
 
 [^pipestitch]: Nathan Serafin, Souradip Ghosh, Harsh Desai, Nathan Beckmann, and Brandon Lucia. 2023. Pipestitch: An energy-minimal dataflow architecture with lightweight threads. In Proceedings of the 56th Annual IEEE/ACM International Symposium on Microarchitecture (MICRO ’23), Association for Computing Machinery, Toronto, ON, Canada, 1409–1422. DOI:https://doi.org/10.1145/3613424.3614283
@@ -325,7 +325,7 @@ University of Maryland.
 [^plasticine]: Raghu Prabhakar, Yaqi Zhang, David Koeplinger, Matt Feldman, Tian Zhao, Stefan Hadjis, Ardavan Pedram, Christos Kozyrakis, and Kunle Olukotun. 2017. Plasticine: A Reconfigurable Architecture For Parallel Patterns. In Proceedings of the 44th Annual International Symposium on Computer Architecture (ISCA ’17), Association for Computing Machinery, Toronto, ON, Canada, 389–402. DOI:https://doi.org/10.1145/3079856.3080256
 <br></br>
 
-[^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CALIFORNIA, USA, 127–136. DOI:https://doi.org/10.1145/3174243.3174264
+[^dynamatic]: Lana Josipović, Radhika Ghosal, and Paolo Ienne. 2018. Dynamically Scheduled High-level Synthesis. In Proceedings of the 2018 ACM/SIGDA International Symposium on Field-Programmable Gate Arrays (FPGA ’18), Association for Computing Machinery, Monterey, CA, USA, 127–136. DOI:https://doi.org/10.1145/3174243.3174264
 <br></br>
 
 [^wavelet]: Zhengyao Lin, Yi Cai, and Milijana Surbatovich. 2026. Let It Flow: A Formally Verified Compilation Framework for Asynchronous Dataflow. Proc. ACM Program. Lang. 10, PLDI (June 2026).
