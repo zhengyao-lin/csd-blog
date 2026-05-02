@@ -58,7 +58,7 @@ for 0 <= e < E
 We first compile the loop body to the dataflow circuit below.
 
 <center>
-<img src="/2026/verified-dataflow-compilation/loop-body.png" style="height: 18em" />
+<img src="/2026/verified-dataflow-compilation/loop-body.svg" style="height: 18em" />
 </center>
 
 This dataflow circuit is essentially a collection of memory and arithmetic operations
@@ -92,7 +92,7 @@ of edge indices `0 .. E - 1` to the loop body circuit.
 
 
 <center>
-<img src="/2026/verified-dataflow-compilation/loop-header.png" style="height: 18em" />
+<img src="/2026/verified-dataflow-compilation/loop-header.svg" style="height: 18em" />
 </center>
 
 However, now we have an issue with memory ordering.
@@ -117,7 +117,7 @@ to finish, avoiding any data races.
 These additional data dependencies are denoted by green edges below in our final dataflow circuit.
 
 <center>
-<img src="/2026/verified-dataflow-compilation/full.png" style="height: 18em" />
+<img src="/2026/verified-dataflow-compilation/full.svg" style="height: 18em" />
 </center>
 
 In tension with avoiding data races, the dataflow compiler still needs to extract as much parallelism
@@ -220,7 +220,7 @@ into a dataflow circuit, formalized in a dataflow calculus called \\(\mathbb{L}\
 The compiled example looks like the following.
 
 <center>
-<img src="/2026/verified-dataflow-compilation/wavelet-circuit.png" style="height: 18em" />
+<img src="/2026/verified-dataflow-compilation/wavelet-circuit.svg" style="height: 18em" />
 </center>
 
 In Wavelet, each function is individually compiled to a dataflow circuit, potentially with
