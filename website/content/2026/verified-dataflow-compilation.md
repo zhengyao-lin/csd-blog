@@ -45,7 +45,8 @@ dataflow circuit is equivalent to the source program.
 ## Examples and Challenges
 
 Let us consider a simple example of dataflow compilation to get a sense of how it works and what the
-challenges are. The example source program is a single relaxation step in the
+challenges are.
+Our example source program is a single relaxation step in the
 [Bellman-Ford algorithm](https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm).
 The input is a graph represented as an edge list, where each edge `e = 0 .. E - 1` has source vertex
 `Src[e]`, destination vertex `Dst[e]`, and weight `W[e]`.
@@ -88,6 +89,9 @@ While such parallelism is great for performance, it also leads to correctness is
 To see this, we compile the loop header as well in the following extended circuit, where the additional
 part of the circuit annotated with `LH` (for loop header) will emit a sequence of edge indices
 `0 .. E - 1` to the loop body circuit.
+Here, the carry operator (`C`) will forward its first input (`0`) as the initial value for the loop
+variable `e`, and then proceed to merge the two inputs at the top depending on the loop condition that
+it receives on the third input on the right.
 
 <center>
 <img src="/2026/verified-dataflow-compilation/loop-header.svg" style="height: 18em" />
@@ -205,6 +209,9 @@ At this point, any two adjacent operations in the program can reorder without af
 as long as no data dependency is violated.
 In particular, the call to `store_A` in the example and the tail recursive call to `f` can run in parallel,
 since they do not have any data dependencies between them.
+
+This step for converting implicit memory dependencies into explicit data dependencies is inspired by RipTide
+[^riptide], except that we formulate it in a more compositional and formal setting.
 
 **Dataflow Compilation.**
 In the core passes of Wavelet, we translate this \\(\mathbb{L}^*\_{let}\\) program into a dataflow circuit,
